@@ -6,7 +6,7 @@ Commands (run on your Mac, from the folder holding this script):
 
   python3 pipeline_sync.py discover
       Read-only. Groups, columns and item counts for the 10 position boards + Live Watchlist
-      -> discovery_report.md. Confirm shortlist groups and Live Watchlist mapping before syncing.
+      -> discovery_report.md.
 
   python3 pipeline_sync.py inspect --board "Live Watchlist"
       Shows a board's groups and columns (use once to check names).
@@ -18,15 +18,17 @@ Commands (run on your Mac, from the folder holding this script):
 
   python3 pipeline_sync.py sync --file BRFC_Recruitment_Pipeline.xlsx           (dry run)
   python3 pipeline_sync.py sync --file BRFC_Recruitment_Pipeline.xlsx --apply   (writes)
-      Progress (Y/N) = Y -> player moved into the Shortlist group of the tab's Monday board
-                            (created there if he isn't on the board yet) AND added to the Live Watchlist.
+      Progress (Y/N) = Y -> player moved into the Short List group of the tab's Monday board
+                            (created there if he isn't on the board yet). Live Watchlist is done by hand.
+      Each player also gets a profile check: bullet-point comments on Monday, and a report
+      (subitem with a file) dated within the last 12 months.
       The workbook is only read. Re-runs are safe: players already in place are skipped.
 
 Token: export MONDAY_API_KEY=...   (or put MONDAY_API_KEY=... in a .env file next to this script).
 Never commit or share the token.
 """
-import argparse, csv, json, os, re, ssl, sys, time, unicodedata, urllib.error, urllib.request
-from datetime import date
+import argparse, csv, html, json, os, re, ssl, sys, time, unicodedata, urllib.error, urllib.request
+from datetime import date, timedelta
 
 BOARD_IDS = {
     "CB List": "1405453688", "LB List": "1405455920", "RB List": "1405459501", "CM - 6": "1630835327",
@@ -134,31 +136,72 @@ def norm(s):
     s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z ]", "", s.replace("-", " ")).split()
 
-def find_player(bname, player, club=""):
-    """Exact normalised name first; else unique surname + first-initial match. Returns (item, how)."""
-    tgt = norm(player)
-    if not tgt: return None, "no name"
-    live = [i for i in items(bname) if not (i["group"]["title"] or "").lower().startswith(EXCLUDE_PREFIX)]
-    exact = [i for i in live if norm(i["name"]) == tgt]
-    if len(exact) >= 1:
-        if len(exact) > 1 and club:
-            cc = col_by_title(bname, "current club", "club", "team")
-            if cc:
-                byclub = [i for i in exact if norm(club)[:1] and norm(club)[0] in " ".join(norm(next((v["text"] for v in i["column_values"] if v["id"] == cc["id"]), "")))]
-                if len(byclub) == 1: return byclub[0], "exact+club"
-        return exact[0], "exact" if len(exact) == 1 else f"exact (first of {len(exact)} rows)"
-    loose = [i for i in live if norm(i["name"]) and norm(i["name"])[-1] == tgt[-1] and norm(i["name"])[0][:1] == tgt[0][:1]]
-    if len(loose) == 1: return loose[0], f"loose ({loose[0]['name']})"
-    return None, "not on board"
+# board club names are abbreviated / misspelt - map to one form before comparing
+CLUB_ALIASES = {
+    "mk dons": "milton keynes dons", "sheff wed": "sheffield wednesday", "sheff utd": "sheffield united",
+    "fgr": "forest green rovers", "forest green": "forest green rovers", "dag red": "dagenham redbridge",
+    "dag and red": "dagenham redbridge", "dagenham and redbridge": "dagenham redbridge",
+    "gatestead": "gateshead", "morecombe": "morecambe", "carisle": "carlisle", "carisle united": "carlisle united",
+    "shewsbury": "shrewsbury", "shewsbury town": "shrewsbury town", "barsnley": "barnsley",
+    "qrp": "queens park rangers", "qpr": "queens park rangers", "wolves": "wolverhampton wanderers",
+    "brighton": "brighton and hove albion", "west brom": "west bromwich albion", "wba": "west bromwich albion",
+    "spurs": "tottenham hotspur", "man city": "manchester city", "man utd": "manchester united",
+    "notts forest": "nottingham forest", "nottm forest": "nottingham forest",
+}
+_CLUB_DROP = {"fc", "afc", "the", "and"}
 
-def in_unattainable(boards, player):
+def club_key(s):
+    t = " ".join(norm(str(s or "").replace("&", " and ")))
+    t = CLUB_ALIASES.get(t, t)
+    t = t.replace("utd", "united")
+    return [w for w in CLUB_ALIASES.get(t, t).split() if w not in _CLUB_DROP]
+
+def same_club(a, b):
+    """True if two club names refer to the same club, allowing 'Cambridge' vs 'Cambridge United'."""
+    ka, kb = club_key(a), club_key(b)
+    if not ka or not kb: return False
+    if ka == kb: return True
+    short, long_ = (ka, kb) if len(ka) < len(kb) else (kb, ka)
+    return short[0] == long_[0] and set(short) <= set(long_)
+
+def _club_of(bname, it):
+    cc = col_by_title(bname, "current club")
+    return next((v["text"] for v in it["column_values"] if cc and v["id"] == cc["id"]), "") or ""
+
+def _name_hits(pool, player):
     tgt = norm(player)
-    for b in boards:
-        for i in items(b):
-            if (i["group"]["title"] or "").lower().startswith(EXCLUDE_PREFIX):
-                n = norm(i["name"])
-                if n == tgt or (n and tgt and n[-1] == tgt[-1] and n[0][:1] == tgt[0][:1]): return True
-    return False
+    exact = [i for i in pool if norm(i["name"]) == tgt]
+    if exact: return exact, "exact"
+    # known name vs full legal name: same surname + same first initial
+    loose = [i for i in pool if norm(i["name"]) and norm(i["name"])[-1] == tgt[-1] and norm(i["name"])[0][0] == tgt[0][0]]
+    return loose, "loose"
+
+def match_player(bname, player, club=""):
+    """Returns (status, item, detail). status: found | ambiguous | unattainable | missing.
+    Never guesses: several candidates, or a loose name match whose club disagrees, is 'ambiguous'."""
+    if not norm(player): return "ambiguous", None, "no name"
+    excluded = lambda i: (i["group"]["title"] or "").lower().startswith(EXCLUDE_PREFIX)
+    live = [i for i in items(bname) if not excluded(i)]
+    hits, how = _name_hits(live, player)
+    if hits:
+        if len(hits) > 1 and club:
+            byclub = [i for i in hits if same_club(club, _club_of(bname, i))]
+            if len(byclub) == 1: return "found", byclub[0], f"{how}+club"
+        if len(hits) > 1:
+            short = [i for i in hits if SHORTLIST_WORD in (i["group"]["title"] or "").lower()]
+            names = ", ".join(f"{i['name']} ({_club_of(bname, i) or '?'}, {i['group']['title']})" for i in hits)
+            if len(short) == 1 and how == "exact": return "found", short[0], f"exact, already shortlisted (other rows: {names})"
+            return "ambiguous", None, f"{len(hits)} rows match: {names}"
+        it = hits[0]
+        if how == "loose":
+            bclub = _club_of(bname, it)
+            if not (club and bclub and same_club(club, bclub)):
+                return "ambiguous", None, f"only a loose name match: '{it['name']}' ({bclub or 'no club'}) - check by hand"
+            return "found", it, f"loose ({it['name']}, same club)"
+        return "found", it, how
+    if _name_hits([i for i in items(bname) if excluded(i)], player)[0]:
+        return "unattainable", None, "only in Unattainable"
+    return "missing", None, "not on board"
 
 def group_with(bname, word):
     for g in board(bname)["groups"]:
@@ -195,61 +238,111 @@ def cmd_pull(tab, out):
 SHEET_BOARD = {"CB": "CB List", "GK": "GK Lists", "CM 6": "CM - 6", "LB": "LB List", "Winger": "Winger List",
                "CM 8": "CM - 8", "CM 10": "CM - 10", "RB": "RB List", "CF Target": "CF - Type A (Target)",
                "CF Runner": "CF - Type B (Runner)"}
+REPORT_DAYS = 365
+_BULLET = re.compile(r"^\s*([•\-\*·–▪◦●]|\d+[.)])\s+\S", re.M)
 
-def cmd_sync(path, apply):
-    """Progress (Y/N) = Y  ->  shortlist group on the tab's Monday board  +  Live Watchlist.
-    Read-only on the workbook; idempotent by checking Monday state."""
+def _plain(body):
+    s = re.sub(r"(?i)<br\s*/?>|</p>|</li>|</div>", "\n", body or "")
+    s = re.sub(r"(?i)<li[^>]*>", "\n• ", s)
+    s = re.sub(r"<[^>]+>", "", s)
+    return html.unescape(s).replace("﻿", "").replace("\xa0", " ")
+
+def profile_check(item_id, today=None):
+    """What's already on the player's Monday profile: bulleted comments, and a report (subitem with a file)
+    dated within the last REPORT_DAYS days. Read-only."""
+    today = today or date.today()
+    d = monday("""query($i:[ID!]){items(ids:$i){updates(limit:100){created_at body}
+               subitems{name created_at assets{id} column_values{id type text}}}}""", {"i": [item_id]})["items"][0]
+    bullets = [u["created_at"][:10] for u in d["updates"] if _BULLET.search(_plain(u["body"]))]
+    reports = []
+    for s in d.get("subitems") or []:
+        has_file = bool(s.get("assets")) or any(v["type"] == "file" and v["text"] for v in s["column_values"])
+        if not has_file: continue
+        when = next((v["text"][:10] for v in s["column_values"] if v["type"] == "date" and v["text"]), s["created_at"][:10])
+        kind = next((v["text"] for v in s["column_values"] if v["id"] == "status" and v["text"]), "")
+        reports.append((when, s["name"], kind))
+    reports.sort(reverse=True)
+    cutoff = (today - timedelta(days=REPORT_DAYS)).isoformat()
+    recent = [r for r in reports if r[0] >= cutoff]
+    return {"bullets": sorted(bullets, reverse=True), "reports": reports, "recent_reports": recent, "comments": len(d["updates"])}
+
+def describe_profile(p):
+    b = f"bullet comments: {len(p['bullets'])} (latest {p['bullets'][0]})" if p["bullets"] else "bullet comments: NONE"
+    if p["recent_reports"]:
+        w, n, k = p["recent_reports"][0]; r = f"report <1yr: yes - {n}{f' ({k})' if k else ''} {w}"
+    elif p["reports"]:
+        w, n, k = p["reports"][0]; r = f"report <1yr: NONE (last was {n} {w})"
+    else:
+        r = "report <1yr: NONE (no reports at all)"
+    return f"{b} | {r}"
+
+def read_rows(path):
+    """Progress = Y rows from every position tab. The header row is the one whose column A says 'Name'."""
+    lock = os.path.join(os.path.dirname(os.path.abspath(path)), "~$" + os.path.basename(path))
+    if os.path.exists(lock):
+        sys.exit(f"{os.path.basename(path)} is open in Excel ({os.path.basename(lock)} exists). Save and close it, then run again.")
     from openpyxl import load_workbook
-    wb = load_workbook(path, read_only=True)
-    plan = []
-    for tab, bname in SHEET_BOARD.items():
-        if tab not in wb.sheetnames: continue
-        rows = list(wb[tab].iter_rows(values_only=True))
-        hr = next((i for i, r in enumerate(rows) if r and str(r[0] or "").strip() == "Name"), None)
-        if hr is None: continue
-        for r in rows[hr + 1:]:
-            name, club, prog = (r[0], r[1], r[4]) if len(r) >= 5 else (None, None, None)
-            if name and str(prog or "").strip().upper() == "Y": plan.append((tab, bname, str(name).strip(), str(club or "").strip()))
-    if not plan: print("Nothing to sync - no Progress = Y rows."); return
-    print(f"{len(plan)} player(s) with Progress = Y{'' if apply else ' (DRY RUN - add --apply to write)'}:")
+    wb = load_workbook(path, read_only=True, data_only=True)
+    out = []
+    try:
+        for tab, bname in SHEET_BOARD.items():
+            if tab not in wb.sheetnames: continue
+            rows = list(wb[tab].iter_rows(values_only=True))
+            hr = next((i for i, r in enumerate(rows) if r and str(r[0] or "").strip().lower() == "name"), None)
+            if hr is None: print(f"  ! tab {tab}: no 'Name' header row - skipped"); continue
+            for r in rows[hr + 1:]:
+                r = list(r) + [None] * (5 - len(r))
+                if r[0] and str(r[4] or "").strip().upper() == "Y":
+                    out.append((tab, bname, str(r[0]).strip(), str(r[1] or "").strip()))
+    finally:
+        wb.close()
+    return out
+
+def cmd_sync(path, apply, today=None):
+    """Progress (Y/N) = Y  ->  Short List group on the tab's Monday board, plus a profile check.
+    Read-only on the workbook; idempotent because every decision is made from live Monday state."""
+    plan = read_rows(path)
+    if not plan: print("Nothing to sync - no Progress = Y rows."); return []
+    print(f"{len(plan)} player(s) with Progress = Y{'' if apply else '  (DRY RUN - add --apply to write)'}:\n")
+    results = []
     for tab, bname, name, club in plan:
         try:
             g = group_with(bname, SHORTLIST_WORD)
-            if not g: raise RuntimeError(f"no group containing '{SHORTLIST_WORD}' on {bname}")
-            it, how = find_player(bname, name, club)
-            if it and it["group"]["id"] == g["id"]:
-                print(f"  {name}: already in {bname} / {g['title']}")
-            elif it:
-                print(f"  {name}: MOVE on {bname} {it['group']['title']} -> {g['title']} [{how}]")
-                if apply: monday("mutation($i:ID!,$g:String!){move_item_to_group(item_id:$i,group_id:$g){id}}", {"i": it["id"], "g": g["id"]})
-            elif in_unattainable([bname], name):
-                print(f"  {name}: SKIPPED - in Unattainable on {bname}, move by hand if that has changed"); continue
-            else:
-                print(f"  {name}: CREATE in {bname} / {g['title']}")
+            if not g: raise RuntimeError(f"no group containing '{SHORTLIST_WORD}' on {bname} - not creating one")
+            status, it, detail = match_player(bname, name, club)
+            if status == "found" and it["group"]["id"] == g["id"]:
+                action, msg = "none", f"already in {g['title']} [{detail}]"
+            elif status == "found":
+                action, msg = "move", f"MOVE {it['group']['title']} -> {g['title']} [{detail}]"
+                if apply:
+                    monday("mutation($i:ID!,$g:String!){move_item_to_group(item_id:$i,group_id:$g){id}}", {"i": it["id"], "g": g["id"]})
+                    it["group"] = {"id": g["id"], "title": g["title"]}
+            elif status == "missing":
+                action, msg = "create", f"CREATE in {g['title']} (not on board - check for duplicates afterwards)"
                 if apply:
                     new = monday("mutation($b:ID!,$g:String!,$n:String!){create_item(board_id:$b,group_id:$g,item_name:$n){id}}",
                                  {"b": BOARD_IDS[bname], "g": g["id"], "n": name})["create_item"]["id"]
                     cc = col_by_title(bname, "current club")
+                    cvals = []
                     if cc and club:
                         monday("mutation($b:ID!,$i:ID!,$c:String!,$v:String!){change_simple_column_value(board_id:$b,item_id:$i,column_id:$c,value:$v){id}}",
                                {"b": BOARD_IDS[bname], "i": new, "c": cc["id"], "v": club})
-            lw, _ = find_player("Live Watchlist", name, club)
-            if lw:
-                print(f"  {name}: already on Live Watchlist")
+                        cvals = [{"id": cc["id"], "text": club}]
+                    items(bname).append({"id": new, "name": name, "group": {"id": g["id"], "title": g["title"]}, "column_values": cvals})
             else:
-                lg = board("Live Watchlist")["groups"][0]  # ⚠ confirm target group in discover
-                print(f"  {name}: ADD to Live Watchlist / {lg['title']}")
-                if apply:
-                    new = monday("mutation($b:ID!,$g:String!,$n:String!){create_item(board_id:$b,group_id:$g,item_name:$n){id}}",
-                                 {"b": BOARD_IDS["Live Watchlist"], "g": lg["id"], "n": name})["create_item"]["id"]
-                    for words, val in [(("current club", "club", "team"), club), (("position",), tab)]:
-                        c = col_by_title("Live Watchlist", *words)
-                        if c and val and c["type"] in ("text", "long_text", "status", "dropdown"):
-                            try: monday("mutation($b:ID!,$i:ID!,$c:String!,$v:String!){change_simple_column_value(board_id:$b,item_id:$i,column_id:$c,value:$v){id}}",
-                                        {"b": BOARD_IDS["Live Watchlist"], "i": new, "c": c["id"], "v": val})
-                            except Exception as ex: print(f"    ({c['title']} not set: {ex})")
+                action, msg = "skip", f"SKIPPED - {detail}" + (" (move by hand if that has changed)" if status == "unattainable" else "")
+            prof = profile_check(it["id"], today) if it else None
+            print(f"  [{tab}] {name} ({club or 'no club'}) on {bname}: {msg}")
+            if it: print(f"        {describe_profile(prof)}")
+            elif action == "create": print("        new item - no comments or reports yet")
+            results.append({"tab": tab, "name": name, "action": action, "profile": prof})
         except Exception as ex:
-            print(f"  SKIPPED {name}: {ex}")
+            print(f"  [{tab}] {name}: SKIPPED - {ex}")
+            results.append({"tab": tab, "name": name, "action": "error", "profile": None})
+    n = {k: sum(r["action"] == k for r in results) for k in ("move", "create", "none", "skip", "error")}
+    verb = "done" if apply else "planned"
+    print(f"\n{verb}: {n['move']} move, {n['create']} create, {n['none']} already shortlisted, {n['skip']} skipped, {n['error']} errors")
+    return results
 
 def cmd_discover(out):
     """Read-only. Groups, columns and top-level item counts for the 10 position boards + Live Watchlist."""

@@ -3,3 +3,4 @@
 ~$*
 __pycache__/
 pull_*.csv
+.pytest_cache/
