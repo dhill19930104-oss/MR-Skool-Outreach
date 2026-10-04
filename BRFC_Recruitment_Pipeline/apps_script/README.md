@@ -1,6 +1,6 @@
 # Auto-sync from the Google Sheet to Monday
 
-`MondaySync.gs` runs inside the **BRFC_Recruitment_Pipeline** Google Sheet. When **Y** goes into
+The four `.gs` files in this folder run inside the **BRFC_Recruitment_Pipeline** Google Sheet. When **Y** goes into
 **Progress (Y/N)** on any position tab, the player is moved into **Short List** on that tab's Monday
 board, or created there if he isn't on the board yet. The outcome is written as a note on the Progress cell.
 To read it, hover over the cell.
@@ -17,7 +17,9 @@ To read it, hover over the cell.
 ## Install (once, about 3 minutes)
 
 1. In the Google Sheet, open **Extensions → Apps Script**.
-2. Delete the placeholder code, paste in all of `MondaySync.gs`, and save.
+2. Paste `1_Setup.gs` over the placeholder code in `Code.gs`. Then, for each of `2_Sync.gs`, `3_Matching.gs`
+   and `4_MondayApi.gs`, click **+** next to *Files* → **Script**, give it that name, paste its contents in,
+   and save. Each file is under 75 lines, so a copy from a preview window isn't cut short.
 3. Open **Project Settings** (cog icon) → **Script properties** → **Add script property**:
    name `MONDAY_API_KEY`, value = your Monday API token. Save.
 4. Back in the editor, choose the `setup` function in the toolbar and click **Run**. Approve the Google

@@ -46,5 +46,5 @@ Nothing else is ever changed. The script never deletes anything, never touches U
 
 ## Google Sheet auto-sync
 
-The live pipeline is the Google Sheet. `apps_script/MondaySync.gs` runs inside the sheet and does the same
+The live pipeline is the Google Sheet. The `apps_script/*.gs` files run inside the sheet and does the same
 Short List move automatically whenever Progress is set to Y. Install steps are in `apps_script/README.md`.
