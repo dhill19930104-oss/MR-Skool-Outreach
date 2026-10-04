@@ -51,14 +51,13 @@ Short List move automatically whenever Progress is set to Y. Install steps are i
 
 ## Data stand-outs
 
-`python3 data_standouts.py "Joe Wright" "Kaelan Casey"` picks each CB's three strongest traits, judged
-against every CB in his most recent league-season export in `data/` (gitignored). It picks at most one
-trait from each family, so a player doesn't get both Aerial Win% and Aerial Wins. A trait marked `*`
-helps one of Bristol's current gaps:
+`python3 data_standouts.py "Joe Wright" "Kaelan Casey"` lists up to three metrics where each CB is in the
+top 30% of CBs in his most recent league-season export in `data/` (gitignored). Only metrics that fill a
+current Bristol gap count:
 - first balls and direct play (aerials, clearances)
 - 1v1
 - winning the ball back (recoveries, tackles and interceptions, pressure regains)
-- security under pressure (pressured pass%, errors, turnovers)
+- security under pressure (pressured pass%, low errors, low turnovers)
 - set-piece goals
 
-Lower is better for Dribbled Past, Errors and Turnovers.
+It lists at most one metric from each group, so a player doesn't get both Aerial Win% and Aerial Wins.

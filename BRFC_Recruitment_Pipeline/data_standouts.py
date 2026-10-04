@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Pick each CB's 3 data stand-outs vs CBs in the same league-season export.
-
-A trait marked * helps a current Bristol gap (first balls / direct play, 1v1, winning the ball back,
-security under pressure, set-piece threat). Usage:  python3 data_standouts.py "Joe Wright" "Kaelan Casey" ...
+"""Up to 3 data stand-outs per CB, only from metrics that fill a current Bristol gap
+(first balls / direct play, 1v1, winning the ball back, security under pressure, set-piece threat).
+A metric counts when the player is in the top 30% of CBs in his most recent league-season export.
+Usage:  python3 data_standouts.py "Joe Wright" "Kaelan Casey" ...
 """
 import os, re, sys, unicodedata
 from openpyxl import load_workbook
@@ -14,29 +14,23 @@ EXPORTS = [("L2 26/27", "data/CB_L2_2627.xlsx", 300), ("L1 25/26", "data/CB_L1_2
            ("L1 24/25", "data/CB_L1_2425.xlsx", 500), ("L2 24/25", "data/CB_L2_2425.xlsx", 500)]
 
 # (label, column titles to try, higher is better, helps our gaps, family - one stand-out per family)
-METRICS = [
-    ("Aerial Win%", ["Aerial Win%"], True, True, "aerial"),
-    ("Aerial Wins", ["Aerial Wins"], True, True, "aerial"),
-    ("Dribbles Stopped%", ["Dribbles Stopped%"], True, True, "1v1"),
-    ("Dribbled Past", ["Dribbled Past"], False, True, "1v1"),
-    ("PAdj Tack&Int", ["PAdj Tack&Int"], True, True, "ballwin"),
-    ("PAdj Interceptions", ["PAdj Interceptions"], True, True, "ballwin"),
-    ("PAdj Tackles", ["PAdj Tackles"], True, True, "ballwin"),
-    ("Ball Recoveries", ["Ball Recoveries"], True, True, "recover"),
-    ("Pressure Regains", ["Pressure Regains"], True, True, "press"),
-    ("PAdj Clearances", ["PAdj Clearances"], True, True, "clear"),
-    ("Pressured Pass%", ["Pr. Pass%"], True, True, "secure"),
-    ("Errors", ["Errors"], False, True, "secure"),
-    ("Turnovers", ["Turnovers"], False, True, "secure"),
-    ("NP Goals", ["NP Goals", "Non Penalty Goals"], True, True, "setpiece"),
-    ("Blocks/Shot", ["Blocks/Shot"], True, False, "block"),
-    ("Passing%", ["Passing%"], True, False, "passing"),
-    ("Long Ball%", ["Long Ball%"], True, False, "long"),
-    ("Deep Progressions", ["Deep Progressions"], True, False, "progress"),
-    ("xGBuildup", ["xGBuildup"], True, False, "progress"),
-    ("PAdj Pressures", ["PAdj Pressures"], True, False, "pressvol"),
+METRICS = [  # (label, column titles to try, higher is better, family - one stand-out per family)
+    ("Aerial Win%", ["Aerial Win%"], True, "aerial"),
+    ("Aerial Wins", ["Aerial Wins"], True, "aerial"),
+    ("Dribbles Stopped%", ["Dribbles Stopped%"], True, "1v1"),
+    ("Low Dribbled Past", ["Dribbled Past"], False, "1v1"),
+    ("PAdj Tack&Int", ["PAdj Tack&Int"], True, "ballwin"),
+    ("PAdj Interceptions", ["PAdj Interceptions"], True, "ballwin"),
+    ("PAdj Tackles", ["PAdj Tackles"], True, "ballwin"),
+    ("Ball Recoveries", ["Ball Recoveries"], True, "recover"),
+    ("Pressure Regains", ["Pressure Regains"], True, "press"),
+    ("PAdj Clearances", ["PAdj Clearances"], True, "clear"),
+    ("Pressured Pass%", ["Pr. Pass%"], True, "secure"),
+    ("Low Errors", ["Errors"], False, "secure"),
+    ("Low Turnovers", ["Turnovers"], False, "secure"),
+    ("NP Goals", ["NP Goals", "Non Penalty Goals"], True, "setpiece"),
 ]
-PCT = {"Aerial Win%", "Dribbles Stopped%", "Pressured Pass%", "Passing%", "Long Ball%"}
+MIN_PCT = 70
 
 def norm(s):
     s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().lower()
@@ -60,25 +54,20 @@ def standouts(name, exports=EXPORTS):
         if not me: continue
         me = max(me, key=lambda r: r["Minutes"])
         scored = []
-        for label, cols, hi, star, fam in METRICS:
+        for label, cols, hi, fam in METRICS:
             col = next((c for c in cols if c in me), None)
             if col is None or not isinstance(me[col], (int, float)): continue
             vals = [r[col] for r in peers if isinstance(r.get(col), (int, float))]
             better = sum(1 for v in vals if (v < me[col] if hi else v > me[col]))
             equal = sum(1 for v in vals if v == me[col])
             pct = round(100 * (better + 0.5 * equal) / len(vals))
-            scored.append((pct, label, me[col], star, fam))
+            scored.append((pct, label, fam))
         picks, fams = [], set()
-        for s in sorted(scored, key=lambda s: (-s[0], not s[3])):
-            if s[4] in fams: continue
-            picks.append(s); fams.add(s[4])
+        for pct, label, fam in sorted(scored, reverse=True):
+            if pct < MIN_PCT or fam in fams: continue
+            picks.append(label); fams.add(fam)
             if len(picks) == 3: break
-        def fmt(p):
-            pct, label, v, star, _ = p
-            val = f"{v:.0f}%" if label in PCT else (f"{v:.2f}" if v < 10 else f"{v:.1f}")
-            suffix = "th" if 10 <= pct % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(pct % 10, "th")
-            return f"{'*' if star else ''}{label} {val} ({pct}{suffix} pct)"
-        return f"vs {league} CBs ({int(me['Minutes'])}'): " + " · ".join(fmt(p) for p in picks)
+        return ", ".join(picks) or "None in the top 30% for our gaps"
     return None
 
 if __name__ == "__main__":
