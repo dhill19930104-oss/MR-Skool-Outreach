@@ -4,6 +4,10 @@ BRFC Recruitment Pipeline <-> Monday.com sync.
 
 Commands (run on your Mac, from the folder holding this script):
 
+  python3 pipeline_sync.py discover
+      Read-only. Groups, columns and item counts for the 10 position boards + Live Watchlist
+      -> discovery_report.md. Confirm shortlist groups and Live Watchlist mapping before syncing.
+
   python3 pipeline_sync.py inspect --board "Live Watchlist"
       Shows a board's groups and columns (use once to check names).
 
@@ -247,6 +251,31 @@ def cmd_sync(path, apply):
         except Exception as ex:
             print(f"  SKIPPED {name}: {ex}")
 
+def cmd_discover(out):
+    """Read-only. Groups, columns and top-level item counts for the 10 position boards + Live Watchlist."""
+    lines = [f"# Discovery report — {date.today().isoformat()}", "",
+             "Read-only snapshot. Confirm the **shortlist group** on each board and the **Live Watchlist** mapping before any `sync --apply`.", ""]
+    summary = ["| Tab | Board | Top-level items | Shortlist group (title contains 'short') | Unattainable group(s) |", "|---|---|---|---|---|"]
+    detail = []
+    for tab, bname in list(SHEET_BOARD.items()) + [("—", "Live Watchlist")]:
+        b = board(bname); its = items(bname)
+        counts = {}
+        for i in its: counts[i["group"]["title"]] = counts.get(i["group"]["title"], 0) + 1
+        short = [g["title"] for g in b["groups"] if SHORTLIST_WORD in g["title"].lower()]
+        unatt = [g["title"] for g in b["groups"] if g["title"].lower().startswith(EXCLUDE_PREFIX)]
+        flag = " ⚠ none" if not short else (" ⚠ several" if len(short) > 1 else "")
+        summary.append(f"| {tab} | {b['name']} (`{b['id']}`) | {len(its)} | {', '.join(short) or '—'}{flag} | {', '.join(unatt) or '—'} |")
+        detail += [f"## {b['name']} (`{b['id']}`) — tab `{tab}`", "", "**Groups**", "", "| Group | id | Items |", "|---|---|---|"]
+        detail += [f"| {g['title']} | `{g['id']}` | {counts.get(g['title'], 0)} |" for g in b["groups"]]
+        detail += ["", "**Columns**", "", "| Title | Type | id |", "|---|---|---|"]
+        detail += [f"| {c['title']} | {c['type']} | `{c['id']}` |" for c in b["columns"]]
+        if bname == "Live Watchlist":
+            detail += ["", "**Current items**", ""] + [f"- {i['name']} — {i['group']['title']}" for i in its]
+        detail.append("")
+        print(f"  {b['name']}: {len(its)} items, shortlist = {', '.join(short) or 'NONE'}")
+    with open(out, "w") as f: f.write("\n".join(lines + summary + [""] + detail))
+    print(f"Wrote {out}")
+
 def cmd_inspect(name):
     b = board(name)
     print(f"{b['name']} ({b['id']})\nGroups: " + " | ".join(g["title"] for g in b["groups"]))
@@ -258,8 +287,10 @@ if __name__ == "__main__":
     sp = ap.add_subparsers(dest="cmd", required=True)
     a = sp.add_parser("pull"); a.add_argument("--tab", required=True, choices=TABS); a.add_argument("--out")
     b = sp.add_parser("sync"); b.add_argument("--file", default="BRFC_Recruitment_Pipeline.xlsx"); b.add_argument("--apply", action="store_true")
+    sp.add_parser("discover");
     c = sp.add_parser("inspect"); c.add_argument("--board", required=True, choices=list(BOARD_IDS))
     x = ap.parse_args()
     if x.cmd == "pull": cmd_pull(x.tab, x.out or f"pull_{x.tab.replace(' ', '_')}.csv")
     elif x.cmd == "sync": cmd_sync(x.file, x.apply)
+    elif x.cmd == "discover": cmd_discover("discovery_report.md")
     else: cmd_inspect(x.board)
