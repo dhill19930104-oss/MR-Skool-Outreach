@@ -48,3 +48,17 @@ Nothing else is ever changed. The script never deletes anything, never touches U
 
 The live pipeline is the Google Sheet. The `apps_script/*.gs` files run inside the sheet and does the same
 Short List move automatically whenever Progress is set to Y. Install steps are in `apps_script/README.md`.
+
+## Data stand-outs
+
+`python3 data_standouts.py "Joe Wright" "Kaelan Casey"` picks each CB's three strongest traits, judged
+against every CB in his most recent league-season export in `data/` (gitignored). It picks at most one
+trait from each family, so a player doesn't get both Aerial Win% and Aerial Wins. A trait marked `*`
+helps one of Bristol's current gaps:
+- first balls and direct play (aerials, clearances)
+- 1v1
+- winning the ball back (recoveries, tackles and interceptions, pressure regains)
+- security under pressure (pressured pass%, errors, turnovers)
+- set-piece goals
+
+Lower is better for Dribbled Past, Errors and Turnovers.

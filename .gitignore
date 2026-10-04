@@ -4,3 +4,4 @@
 __pycache__/
 pull_*.csv
 .pytest_cache/
+BRFC_Recruitment_Pipeline/data/
