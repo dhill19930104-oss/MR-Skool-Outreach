@@ -107,11 +107,14 @@ POSITIONS = {
         "retain":   ("Keeps the ball", 20, [("dispossessions_90", False), ("turnovers_90", False)]),
         "workback": ("Works back", 10, [("padj_tackles_and_interceptions_90", True), ("pressure_regains_90", True)]),
     }),
+    # Target / poacher: knows where the goal is when supplied; aerial still matters, pressing least
     "CF Target": ([EN5.format("CF")], None, {
-        "aerial":   ("First contacts / aerial", 30, [("aerial_wins_90", True), ("aerial_ratio", True)]),
-        "finish":   ("Box presence & finishing", 30, [("np_xg_90", True), ("npg_90", True), ("np_xg_per_shot", True)]),
-        "holdup":   ("Holds it up", 20, [("fouls_won_90", True), ("dispossessions_90", False), ("turnovers_90", False)]),
-        "press":    ("Presses from the front", 20, [("pressures_90", True), ("pressure_regains_90", True)]),
+        "finish":   ("Finishing", 40, [("np_xg_90", True), ("npg_90", True), ("np_xg_per_shot", True),
+                                       ("conversion_ratio", True)]),
+        "box":      ("Box presence", 25, [("touches_inside_box_90", True), ("np_shots_90", True)]),
+        "aerial":   ("Aerial / first contacts", 20, [("aerial_wins_90", True), ("aerial_ratio", True)]),
+        "holdup":   ("Holds it up", 10, [("fouls_won_90", True), ("dispossessions_90", False), ("turnovers_90", False)]),
+        "press":    ("Presses from the front", 5, [("pressures_90", True), ("pressure_regains_90", True)]),
     }),
     "CF Runner": ([EN5.format("CF")], None, {
         "behind":   ("Runs in behind", 25, [("f3_lbp_to_space_10_received_90", True), ("obv_dribble_carry_90", True)]),
