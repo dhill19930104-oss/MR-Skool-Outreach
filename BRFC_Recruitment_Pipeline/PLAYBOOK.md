@@ -47,6 +47,14 @@ so those are left to video.
    - Skip anyone in an Unattainable group, and anyone 33 or older.
    - Prefer Monday's current club and minutes over the data's.
    - Add a Transfermarkt value from the List Data Scores HTML where there is one.
+2b. **Use the List Data Scores HTML as well** (`List_DataScores_Bristol_Fit.html`). Don't use it only for Transfermarkt values:
+   - **Position panel** (for example *Winger List*): every player on that Monday board, with Bristol Fit %,
+     data scores, 26/27 minutes, a LOW MINS flag and scouting grade. Rank the board's own players with it,
+     especially Short/Long List players who have low minutes.
+   - **500+ mins pool (`MINS_DATA`)**: 3 seasons of Bristol Fit % by position across the English and Scottish leagues. Use it to
+     find players who are **not on Monday**: they played 500+ in a higher league last season, are under 500 this season, and are worth €1.5m or less.
+     For wingers it is the only English/Scottish winger data we have until an EN5 wingers export arrives.
+   - Show where the HTML Fit % and the StatsBomb rating agree. A player who scores well on both is the strongest case.
 3. **Write a "<Position> Data Options" tab** that is grouped by route, with the method and the bar to beat at the top.
 4. **The user picks names.** Add them to the position tab with Name, Club and Mins 26/27. Leave Notes and
    Progress blank for the scouts. Fill DATA Stand Outs with gap metrics only, names only, where the
@@ -60,4 +68,4 @@ so those are left to video.
 |---|---|---|---|---|
 | CB | ✅ | ✅ CB Data Options | ✅ 10 | ✅ LCB / RCB |
 | GK, LB, RB, CM 6, CM 8, CM 10, CF Target, CF Runner | ✅ model ready | – | – | – |
-| Winger | ⚠ needs EN5 wingers export | – | – | – |
+| Winger | ✅ StatsBomb (wide AMs + K League) + HTML panel and pool; EN5 wingers export still wanted | in chat | – | – |
