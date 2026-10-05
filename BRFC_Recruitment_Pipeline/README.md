@@ -76,3 +76,25 @@ position's Monday board. LCB and RCB are split by the player's foot on Monday. *
 - **Stars** = score ÷ 20, rounded down to the nearest half star.
 
 The CB rankings are a snapshot. Refreshing them means re-reading the Short List and any new notes or reports.
+
+## CB data rating (`cb_rating.py`)
+
+`cb_rating.py` reads the StatsBomb 3-season CB export (`data/CB_all_leagues_3seasons.xlsx`, gitignored),
+which has one tab per league: Championship, L1, L2, NL and Scottish Premiership.
+
+1. **Season rating:** gap-weighted percentiles against CBs in the same league-season.
+   - aerial 20
+   - security under press 20
+   - wins it back 15
+   - 1v1 15
+   - clearances/blocks 10
+   - set-piece goals 10
+   - pressure regains 5
+   - defensive OBV 5
+2. **Level-adjusted rating:** `0.6 × rating + 40 × league strength`, which puts every league on one scale.
+   League strength is Championship 1.0, L1/SPL 0.8, L2 0.6 and NL 0.35.
+3. **Player rating:** each season's adjusted rating, weighted by recency (26/27 0.30, 25/26 0.45, 24/25 0.25)
+   and by minutes reliability (minutes ÷ 900, capped at 1).
+
+This rating feeds the **CB Data Options** tab and the data half of the Squad Planner score.
+The "bar to beat" is our own CBs' rating: Harbottle 64, Kilgour 57, Kelly 53 and Balmer 42.
