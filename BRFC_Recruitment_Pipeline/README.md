@@ -61,3 +61,18 @@ current Bristol gap count:
 - set-piece goals
 
 It lists at most one metric from each group, so a player doesn't get both Aerial Win% and Aerial Wins.
+
+## Squad Planner tab (CB test, 05 Oct 2026)
+
+The **Squad Planner** tab in the Google Sheet lays out each position on a pitch: CF, CF, W, 10, W, 8, 6,
+LWB/LB, RWB/RB, LCB, RCB and GK. Each slot shows the top 5 players currently in **Short List** on that
+position's Monday board. LCB and RCB are split by the player's foot on Monday. **Planner Detail** shows how each score was worked out.
+
+- **Score** = 50% Data + 50% Scouting.
+- **Data** is the average percentile across our gap metrics against CBs in the same league-season export
+  (see `data_standouts.py`). If there is no export for the player, it uses his Bristol Fit %.
+- **Scouting** is the share of the 5 CB needs (aerial, composure under press, winning it back, 1v1,
+  set pieces) that his Monday notes and reports back up. Evidence older than 12 months counts half.
+- **Stars** = score ÷ 20, rounded down to the nearest half star.
+
+The CB rankings are a snapshot. Refreshing them means re-reading the Short List and any new notes or reports.
