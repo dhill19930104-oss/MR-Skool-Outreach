@@ -11,7 +11,7 @@
 var TAB_BOARDS = {
   'CB': '1405453688', 'GK': '1405448899', 'CM 6': '1630835327', 'LB': '1405455920',
   'Winger': '1405463991', 'CM 8': '1630854223', 'CM 10': '1630854673', 'RB': '1405459501',
-  'CF Target': '1630857074', 'CF Runner': '1630857775'
+  'CF Target': '1630857074', 'CF Target/Poacher': '1630857074', 'CF Runner': '1630857775'
 };
 var PROGRESS_COL = 5;            // E
 var SHORTLIST_WORD = 'short';    // group whose title contains this = shortlist group

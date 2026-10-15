@@ -237,6 +237,7 @@ def cmd_pull(tab, out):
 # ---------------------------------------------------------------- sync
 SHEET_BOARD = {"CB": "CB List", "GK": "GK Lists", "CM 6": "CM - 6", "LB": "LB List", "Winger": "Winger List",
                "CM 8": "CM - 8", "CM 10": "CM - 10", "RB": "RB List", "CF Target": "CF - Type A (Target)",
+               "CF Target/Poacher": "CF - Type A (Target)",
                "CF Runner": "CF - Type B (Runner)"}
 REPORT_DAYS = 365
 _BULLET = re.compile(r"^\s*([•\-\*·–▪◦●]|\d+[.)])\s+\S", re.M)
